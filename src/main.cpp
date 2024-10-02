@@ -1,8 +1,8 @@
 #include "Arduino.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-//#include "WiFi.h"
-// #include <Firebase_ESP_Client.h>
+// #include "WiFi.h"
+//  #include <Firebase_ESP_Client.h>
 #include <ArduinoJson.h>
 #include <time.h>
 #include "RTClib.h"
@@ -29,7 +29,7 @@
 #include "SD.h"
 #include "SPI.h"
 #include "FS.h"
-
+#define VERSINGAPAK
 #define DEVICE_ID "1"
 
 #define REASSIGN_PINS
@@ -85,15 +85,16 @@ unsigned long lastTime = 0;
 // Set timer to 5 seconds (5000)
 unsigned long timerDelay = 5000;
 
-struct dataJadwal {
+struct dataJadwal
+{
   String url;
   String waktu;
   int isplayed;
-
 };
 
-struct getJadwalVar {
-  int panjang=0;
+struct getJadwalVar
+{
+  int panjang = 0;
   dataJadwal datjad[100];
 };
 
@@ -104,7 +105,7 @@ SPIClass *hspi = NULL;
   other function
 */
 String httpGETRequestUserFromDevice();
-String httpGETRequestJadwalFromUser(String userID, getJadwalVar* gJV);
+String httpGETRequestJadwalFromUser(String userID, getJadwalVar *gJV);
 String postDataBPMtoServer(String dataBPM, String userID, String tanggal);
 String responseUserID;
 // put function declarations here:
@@ -139,27 +140,37 @@ void setup()
   particleSensor.setup();                    // Configure sensor with default settings
   particleSensor.setPulseAmplitudeRed(0x0A); // Turn Red LED to low to indicate sensor is running
   particleSensor.setPulseAmplitudeGreen(0);
-   if (!rtc.begin())
-    {
-        Serial.println("RTC not detected");
-    }
-    Serial.println("RTC detected");
-    timeClient.update();
-    unsigned long epochTime = timeClient.getEpochTime()-946684800UL;
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  if (!rtc.begin())
+  {
+    Serial.println("RTC not detected");
+  }
+  Serial.println("RTC detected");
+  timeClient.update();
+  unsigned long epochTime = timeClient.getEpochTime() - 946684800UL;
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
 
   audio.setVolume(15);
- // audio.connecttohost("https://github.com/faoziaziz/as-hot/raw/main/Dewa20-200120-20Pangeran20Cinta.mp3");
- // audio.connecttoFS(SD, "/audios/pangerancintalow.mp3");
+  // audio.connecttohost("https://github.com/faoziaziz/as-hot/raw/main/Dewa20-200120-20Pangeran20Cinta.mp3");
+#ifdef VERSINGAPAK
+  audio.connecttoFS(SD, "/audios/opening_ngapak.mp3");
+#else
+  audio.connecttoFS(SD, "/audios/opening.mp3");
+#endif
 }
 
 void loop()
 {
   // put your main code here, to run repeatedly:
+   DateTime now = rtc.now();
   audio.loop();
   if (!audio.isRunning())
   {
+    
     DateTime now = rtc.now();
+   // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  //  char buffTanggalPost4[] = "YYYY-MM-DD hh:mm:ss";
+  
+    //Serial.println(now.toString(buffTanggalPost4));
     // Serial.println("Audio telah selesai");
     /* eksekusi BPM*/
     // SeqOximetri();
@@ -186,48 +197,73 @@ void loop()
       }
     }
 
-/*
-    Serial.print("IR=");
-    Serial.print(irValue);
-    Serial.print(", BPM=");
-    Serial.print(beatsPerMinute);
-    Serial.print(", Avg BPM=");
-    Serial.print(beatAvg);
-*/
+    /*
+        Serial.print("IR=");
+        Serial.print(irValue);
+        Serial.print(", BPM=");
+        Serial.print(beatsPerMinute);
+        Serial.print(", Avg BPM=");
+        Serial.print(beatAvg);
+    */
     if (irValue < 50000) // finger not detected
     {
+      // neopixelWrite(RGB_BUILTIN, RGB_BRIGHTNESS, 0, 0);
+      /* get user id */
+      char buffTanggalPost1[] = "YYYY-MM-DD hh:mm:ss";
+      Serial.println(now.toString(buffTanggalPost1));
+
+      /* get jadwal tiap detik ke 30 */
+      char buffTanggalPost2[]="ss";
+      if(String(now.toString(buffTanggalPost2)).equals("30")){
+        if(WiFi.status()==WL_CONNECTED){
+          userFromDevice = httpGETRequestUserFromDevice();
+          Serial.println(userFromDevice);
+          /* procedure to get schedule from the server*/
+          String jadwal = httpGETRequestJadwalFromUser(userFromDevice, &gJV);
+          Serial.println(jadwal);
+          Serial.println("panjang : " + String(gJV.panjang));
+
+
+        } else {
+          Serial.println("Wifi gak nyambung");
+        }
+
+      }
 
       /* get commmand to wait the counter until 2 minutes */
       if (AVtoPOSTBPM == true)
       {
         /* post to server with content BPM */
-        neopixelWrite(RGB_BUILTIN, RGB_BRIGHTNESS, 0, 0);
-        /* get user id */
+
         if (WiFi.status() == WL_CONNECTED)
         {
 
           userFromDevice = httpGETRequestUserFromDevice();
           Serial.println(userFromDevice);
 
-          //String tanggalPost = "2024-09-25 09:58:34";
+          // String tanggalPost = "2024-09-25 09:58:34";
           char buffTanggalPost[] = "YYYY-MM-DD hh:mm:ss";
-          String responsePost = postDataBPMtoServer(String(beatsPerMinute), userFromDevice, now.toString(buffTanggalPost));
+          String responsePost = postDataBPMtoServer(String(beatsPerMinute), userFromDevice, now.toString(buffTanggalPost1));
 
-          Serial.println(now.toString(buffTanggalPost)+ responsePost);
+          Serial.println(now.toString(buffTanggalPost) + responsePost);
           Serial.println("posted : " + String(beatsPerMinute));
 
-        
+
+          if(beatsPerMinute<60){
+            //audio jentike
+            audio.connecttoFS(SD, "/audios/jentike.mp3");
+          }
+
           userFromDevice = httpGETRequestUserFromDevice();
           Serial.println(userFromDevice);
-        
-          
+
           /* procedure to get schedule from the server*/
           String jadwal = httpGETRequestJadwalFromUser(userFromDevice, &gJV);
           Serial.println(jadwal);
-          Serial.println("panjang : "+String(gJV.panjang));
-          
+          Serial.println("panjang : " + String(gJV.panjang));
 
-          for(int x=0; x<gJV.panjang;x++){
+          for (int x = 0; x < gJV.panjang; x++)
+          {
             Serial.println(gJV.datjad[x].url);
             Serial.println(gJV.datjad[x].waktu);
           }
@@ -235,33 +271,42 @@ void loop()
           AVtoPOSTBPM = false;
           //
         }
-
-
-       
-        
-
+        else
+        {
+          audio.connecttoFS(SD, "/audios/wifiincon_ngapak.mp3");
+          AVtoPOSTBPM = false;
+        }
       }
 
-       if(gJV.panjang>0){
-          
-          char buffJAM[] ="hh:mm";
+      if (gJV.panjang > 0)
+      {
+        DateTime now = rtc.now();
 
-          for (int y=0; y<gJV.panjang;y++){
-            if(String(now.toString(buffJAM)).equals(gJV.datjad[y].waktu)&&gJV.datjad[y].isplayed!=1){
-             gJV.datjad[y].isplayed=1;
-              audio.connecttohost(gJV.datjad[y].url.c_str());
-              audio.setVolume(15);
-              
+        char buffJAM[] = "hh:mm";
 
-            }
+        for (int y = 0; y < gJV.panjang; y++)
+        {
+          if (String(now.toString(buffJAM)).equals(gJV.datjad[y].waktu) && gJV.datjad[y].isplayed != 1)
+          {
+            
+
+            gJV.datjad[y].isplayed = 1;
+            Serial.println( "Status played " + String(gJV.datjad[y].isplayed ));
+            
+            
+            /*update*/
+            DateTime now = rtc.now();
+            char buffTanggalPost[] = "YYYY-MM-DD hh:mm:ss";
+            Serial.println(now.toString(buffTanggalPost));
+            audio.connecttohost(gJV.datjad[y].url.c_str());
+            //audio.setVolume(15);
           }
-          Serial.println("Ada jadwalnya");
-          Serial.println(now.toString(buffJAM));
-          delay(1000);
-
-
-
         }
+        Serial.println("Ada jadwalnya bjir");
+        //DateTime now = rtc.now();
+        Serial.println(now.toString(buffJAM));
+        delay(1000);
+      }
       /* next pro*/
       /* procedure to get schedule from the server*/
 
@@ -274,7 +319,7 @@ void loop()
       AVtoPOSTBPM = true;
     }
 
-    //Serial.println();
+    // Serial.println();
   }
 }
 
@@ -383,11 +428,11 @@ String postDataBPMtoServer(String dataBPM, String userID, String tanggal)
   return payload;
 }
 
-String httpGETRequestJadwalFromUser(String userID, getJadwalVar* gJV)
+String httpGETRequestJadwalFromUser(String userID, getJadwalVar *gJV)
 {
 
   JsonDocument doc;
- // getJadwalVar gJV;
+  // getJadwalVar gJV;
   WiFiClientSecure *client = new WiFiClientSecure;
   HTTPClient http;
   String payload = "{}";
@@ -420,12 +465,13 @@ String httpGETRequestJadwalFromUser(String userID, getJadwalVar* gJV)
       Serial.println("Panjangnya");
       Serial.println(doc["data"].size());
       // payload = doc["data"]["nomor_rekam_medis"].as<String>();;
-      gJV->panjang=doc["data"].size();
+      gJV->panjang = doc["data"].size();
 
-      for (int i=0;i<doc["data"].size();i++){
-        gJV->datjad[i].url=doc["data"][i]["url_audio"].as<String>();
-        gJV->datjad[i].waktu=doc["data"][i]["waktu"].as<String>();
-        gJV->datjad[i].isplayed=0;
+      for (int i = 0; i < doc["data"].size(); i++)
+      {
+        gJV->datjad[i].url = doc["data"][i]["url_audio"].as<String>();
+        gJV->datjad[i].waktu = doc["data"][i]["waktu"].as<String>();
+        gJV->datjad[i].isplayed = 0;
       }
     }
     else
